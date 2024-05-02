@@ -1,0 +1,505 @@
+---
+title: "BTC"
+output: html_document
+date: "2024-03-27"
+---
+
+Functions
+```{r}
+remove_consecutive_repetitions <- function(x) {
+  unique_values <- vector("numeric")
+  for (i in 1:length(x)) {
+    if (i == 1 || x[i] != x[i - 1]) {
+      unique_values <- c(unique_values, x[i])
+    }
+  }
+  return(unique_values)
+}
+
+# Max log Likelihood for Laplace parameters
+nll_laplace <- function(params, data) {
+  mu <- params[1]
+  b <- params[2]
+  n <- length(data)
+  return ( -( -n*log(2*b) - 1/b * sum(abs(data - mu)) ))
+}
+
+
+laplace_pdf <- function(x, mu, b) {
+  1/(2*b) * exp(-abs(x - mu)/b)
+}
+
+sgn <- function(x) {
+  ifelse(x > 0, 1, ifelse(x < 0, -1, 0))
+}
+
+nll_aldlaplace <- function(params, data) {
+  m <- params[1]
+  lambda <- params[2]
+  kappa <- params[3]
+  n <- length(data)
+  sum <- 0
+  for (x in data){
+    s <- sgn(x - m)
+    sum <- sum + (x - m)*lambda*s*kappa^s
+  }
+  loglik <- n*log(lambda/(kappa +1/kappa)) - sum
+  return (-loglik)
+}
+
+pdf_aldlaplace <- function(x, m, lambda, kappa) {
+  s <- sgn(x- m)
+  pdf_value <- lambda/(kappa+1/kappa) * exp(-(x - m) * lambda* s * kappa^s)
+  return(pdf_value)
+}
+
+
+```
+
+
+
+Profit: risk-reward ratios don't matter
+```{r}
+library(readxl)
+btchigh <- read.csv("btc_new experiment profit 50 100 150 vol50-spreadsheet.csv", skip = 17)
+btchigh <- btchigh[, 2:ncol(btchigh)] 
+btchigh <- data.frame(btchigh[, seq(2, ncol(btchigh), by = 2)]) 
+btchigh <- sapply(btchigh, as.numeric) / 1000
+
+btclow <- read_excel("btc_new experiment profit 10 20 30 vol50-spreadsheet.xlsx")
+btclow <- btclow[, 2:ncol(btclow)] 
+btclow <- data.frame(btclow[, seq(2, ncol(btclow), by = 2)]) 
+btclow <- sapply(btclow, as.numeric) / 1000
+
+
+hist(c(btchigh[, 1:200]), breaks = 200, probability = T)
+hist(c(btclow[, 1:200]), breaks = 200, probability = T)
+
+hist(c(btchigh[, 201:400]), breaks = 200, probability = T)
+hist(c(btclow[, 201:400]), breaks = 200, probability = T)
+
+hist(c(btchigh[, 401:600]), breaks = 200,  probability = T)
+hist(c(btclow[, 401:600]), breaks = 200, probability = T)
+
+mushigh <- c()
+bshigh<- c()
+for (i in 0:2){
+  fit <- optim(par = c(1, 1), fn = nll_laplace, data = c(btchigh[, (1+200*i):(1+200*i + 199)]))
+  mushigh[i+1]<- fit$par[1]
+  bshigh[i+1]<- fit$par[2]
+}
+
+muslow<- c()
+bslow<- c()
+for (i in 0:2){
+  fit <- optim(par = c(1, 1), fn = nll_laplace, data = c(btclow[, (1+200*i):(1+200*i + 199)]))
+  muslow[i+1]<- fit$par[1]
+  bslow[i+1]<- fit$par[2]
+}
+
+
+# Plot of distribution
+x <- seq(-150, 150, length.out = 100)
+cex <- 2
+png("your_plot.png", width = 1618, height = 1000, units = "px", res = 100)
+hist(btclow[,401:600], breaks = 100, probability = TRUE, col = 'white', border = 'black',  main = "", xlab = "Total PnL", ylab = "Density", xlim = c(-150, 150), ylim = c(0, 0.021))
+points(x,laplace_pdf(x, mu = muslow[3], b = bslow[3]), pch = 19, col = '#0000A0', cex = cex)
+legend("topright", legend = c(expression(paste("Laplace(", mu, " ", "\u2248", " 0, ", b, " = 23.5)"))),  pch = c(19, 20), 
+       col = c("#0000A0"), cex = cex, text.font = 2)
+
+```
+
+
+Profit: random trader vs risk managed/disciplined trader 
+```{r}
+library(readxl)
+btc0 <- read.csv("btc_new experiment profit 0 0 vol10-spreadsheet.csv", skip = 17)
+btc0 <- btc0[, 2:ncol(btc0)] 
+btc0 <- data.frame(btc0[, seq(2, ncol(btc0), by = 2)]) 
+btc0 <- sapply(btc0, as.numeric) / 1000
+
+btc_profit <- read.csv("btc_new experiment profit 10 20 30-spreadsheet.csv", skip  = 17)
+btc_profit <- btc_profit[, 2:ncol(btc_profit)] 
+btc_profit <- data.frame(btc_profit[, seq(2, ncol(btc_profit), by = 2)]) 
+btc_profit <- sapply(btc_profit, as.numeric) / 1000
+
+hist(c(btc0[, 1:200]), breaks = 200, probability = T)
+hist(c(btc_profit[, 401:600]), breaks = 200, probability = T)
+
+fit0 <- optim(par = c(1, 1), fn = nll_laplace, data = c(btc0[,1:200]))
+mu0 <- fit0$par[1]
+b0 <- fit0$par[2]
+
+fit_profit <- optim(par = c(1, 1), fn = nll_laplace, data = c(btc_profit[,401:600]))
+mu_profit <- fit_profit$par[1]
+b_profit <- fit_profit$par[2]
+
+# Plot of distribution
+x <- seq(-22, 22, length.out = 100)
+cex <- 2
+png("your_plot.png", width = 1618, height = 1000, units = "px", res = 100)
+hist(btc_profit[,401:600], breaks = 100, probability = TRUE, col = 'white', border = 'black',  main = "", xlab = "Total PnL", ylab = "Density", xlim = c(-20, 20), ylim = c(0, 0.1))
+points(x,laplace_pdf(x, mu = mu_profit, b = b_profit), pch = 19, col = '#0000A0', cex = cex)
+legend("topright", legend = c(expression(paste("Laplace(", mu, " ", "\u2248", " 0, ", b, " = 4.932)"))),  pch = c(19, 20), 
+       col = c("#0000A0"), cex = cex, text.font = 2)
+
+
+
+```
+Volatility on Profits
+```{r}
+btc_vol <- read.csv("btc_new experiment profit vol 10 to 50-spreadsheet.csv", skip = 18)
+btc_vol <- btc_vol[, 2:ncol(btc_vol)] 
+btc_vol<- data.frame(btc_vol[, seq(2, ncol(btc_vol), by = 2)]) 
+btc_vol <- sapply(btc_vol, as.numeric) / 1000
+
+mus <- c()
+bs <- c()
+for (i in 0:4){
+  fit_profit <- optim(par = c(1, 1), fn = nll_laplace, data = c(btc_vol[, (1+200*i):(1+200*i + 199)]))
+  mus[i+1] <- fit_profit$par[1]
+  bs[i+1] <- fit_profit$par[2]
+}
+
+# Plots
+plot(bs)
+X<- cbind( rep(1,5),1:5)
+B_hat <- solve(t(X) %*% X) %*% t(X) %*% bs
+f_hat <- X %*% B_hat
+r2_1 <- 1 - sum( (bs - f_hat)^2) / sum((bs - mean(bs))^2)
+r2_2 <- 1 - sum( (bs - 4.7 * 1:5)^2) / sum((bs - mean(bs))^2)
+plot(1:5, bs)
+lines(1:5, f_hat, col = 'blue')
+lines(1:5, 4.7 * 1:5, col = 'red')
+
+png("your_plot.png", width = 1618, height = 1000, units = "px", res = 100)
+plot(1:length(bs), bs, col = 'black', xlab = "Volatility [$10's]", ylab = 'Scale Parameter b', type = 'n',cex.lab=1.4)
+points(1:length(bs), bs, col = 'black', pch = 1, cex = 3)
+points(1:length(bs), f_hat,  col = '#0000A0', type = 'l', lwd =15)
+points(1:length(bs), 4.7 * 1:5,  col = '#B83C08', type = 'l', lwd =5 )
+legend("bottomright", legend = c("Actual", expression(paste(hat(beta), " = [0.18, 4.67]'")), expression(paste(hat(beta), " = [0, 4.7]'")) ),
+       col = c("black", "#0000A0", "#B83C08"), pch = c(1, 16, 16), cex = 2, pt.cex = 4) 
+
+
+# Plot of distribution
+x <-  seq(-103,103, length.out =100)
+cex <- 2
+png("your_plot.png", width = 1618, height = 1000, units = "px", res = 100)
+hist(c(btc_vol[, 801:1000]), breaks = 200, probability = TRUE, col = 'white', border = 'black',  main = "", xlab = "PnL [$1000's]", ylab = "Density", xlim= c(min(x), max(x)), ylim = c(0, 0.02))
+points(x,laplace_pdf(x, mu = 0, b = f_hat[5]), pch = 19, col = '#0000A0', cex = cex)
+points(x, laplace_pdf(x, mu = 0, b = 4.7 *5), pch = 20, col = '#B83C08', cex = cex)
+# points(x,laplace_pdf(x, mu = mus[4], b = bs[4]), pch = 19, col = '#87F717', cex = cex)
+legend("topright", 
+       legend = c(expression(paste("Laplace(", mu, " = 0, ", b, " = 23.53)")), 
+                  expression(paste("Laplace(", mu, " = 0, ", b, " = 23.5)"))),
+       pch = c(19, 20), 
+       col = c("#0000A0", "#B83C08"), 
+       cex = cex, 
+       text.font = 2)
+
+
+
+
+
+```
+
+
+
+
+
+Duration effect on Pnl Distribution
+```{r}
+btc_profit <-read.csv("btc_new experiment profit 10 20 30-spreadsheet.csv", skip  = 17)
+btc_profit <- btc_profit[, 2:ncol(btc_profit)] 
+btc_profit <- data.frame(btc_profit[, seq(2, ncol(btc_profit), by = 2)]) 
+btc_profit <- sapply(btc_profit, as.numeric) / 1000
+
+mus <- c()
+bs <- c()
+for (i in 1:100){
+  fit_profit <- optim(par = c(1, 1), fn = nll_laplace, data = c(btc_profit[1:(i*100),401:600]))
+  mus[i] <- fit_profit$par[1]
+  bs[i] <- fit_profit$par[2]
+}
+
+
+# Plots
+plot(bs)
+library(MASS)
+X<- cbind( rep(1, 100),1:100,(1:100)^2, (1:100)^3)
+B_hat <- solve(t(X) %*% X) %*% t(X) %*% bs
+f_hat <- X %*% B_hat
+r2_1 <- 1 - sum( (bs - f_hat)^2) / sum((bs - mean(bs))^2)
+plot(1:100, bs)
+lines(1:100, f_hat, col = 'blue')
+
+png("your_plot.png", width = 1618, height = 1000, units = "px", res = 100)
+lwd <- 10
+plot(1:length(bs), bs, col = 'black', xlab = "Tick Duration [100's]", ylab = 'Scale Parameter b', type = 'n',cex.lab=1.4)
+points(1:length(bs), f_hat,  col = '#0000A0', type = 'l', lwd =lwd )
+points(1:length(bs), bs, col = 'black', pch = 1, cex = 3)
+legend("bottomright",
+       legend = c("Actual", expression(paste(hat(b), " = 0.621 + 0.000836Ticks - 0.00000689Ticks^2 + 0.000000029Ticks^3"))),
+       col = c("black", "#0000A0"), pch = c(1, 16), cex = 2, pt.cex = 4)
+
+
+
+
+# Plot of distribution
+x <-  seq(-20, 20, length.out =100)
+cex <- 2
+png("your_plot.png", width = 1618, height = 1000, units = "px", res = 100)
+hist(btc_profit[1:5000, 401:600], breaks = 100, probability = TRUE, col = 'white', border = 'black',  main = "", xlab = "Total PnL [$1000's]", ylab = "Density", xlim= c(-20, 20), ylim = c(0, 0.15))
+points(x,laplace_pdf(x, mu = mus[50], b = bs[50]), pch = 19, col = '#0000A0', cex = cex)
+points(x, laplace_pdf(x, mu = 0, b = f_hat[50]), pch = 20, col = '#B83C08', cex = cex)
+legend("topright", legend = c(expression(paste("Laplace(", mu, " = 0, ", b, " = 3.42)")), expression(paste("Laplace(", mu, " = 0, ", b, " = 3.44)"))), 
+       pch = c(19, 20), col = c("#0000A0", "#B83C08"), cex = cex, text.font = 2)
+
+
+```
+Momentum SMA
+```{r}
+momentum <- read.csv('btc_new experiment  momentum-spreadsheet.csv', skip = 16)
+momentum <- momentum[, 2:ncol(momentum)] 
+sma <- data.frame(momentum[, seq(2, ncol(momentum), by = 3)]) 
+sma <- sapply(sma, as.numeric) / 1000
+
+
+# SMA
+unique_list <- c()
+for (i in 1:ncol(sma)){
+  unique_list[i] <- length( unique(sma[, i]) )
+}
+
+sma_tmp <- matrix(NA, nrow= max(unique_list), ncol = ncol(sma))
+for (i in 1:ncol(sma)){
+  new_col <-  remove_consecutive_repetitions(sma[, i])
+  sma_tmp[1:length(new_col), i] <- new_col
+}
+
+mus <- c()
+lambdas<- c()
+kappas <- c()
+for (i in 0:4){
+  dat <- na.omit( c(sma_tmp[, (1+200*i):(1+200*i + 199)])) 
+  fit <- optim(par = c(1, 1, 1), fn = nll_aldlaplace, data = dat)
+  mus[i+1]<- fit$par[1]
+  lambdas[i+1]<- fit$par[2]
+  kappas[i+1] <- fit$par[3]
+}
+
+
+# Plots
+X<-cbind( rep(1, 5), 1:5)
+B_hat<- solve(t(X) %*% X)%*% t(X) %*% log(lambdas)
+f_hat<- exp( X %*% B_hat )
+r2_1 <- 1 - sum( (lambdas - f_hat)^2) / sum((lambdas - mean(lambdas))^2)
+x <- seq(0, 6, length.out = 100)
+X <- cbind(rep(1, 100), x)
+f_hat<- exp( X %*% B_hat )
+plot(x, f_hat, col ='blue')
+points(lambdas)
+
+exp(B_hat[1])
+cex <- 3
+png("your_plot.png", width = 1618, height = 1000, units = "px", res = 100)
+plot(x, f_hat,  col = '#0000A0', lwd = 3, xlab = "Volatility [$10's]", ylab = expression(lambda), cex.lab = 1.4)
+points(1:length(lambdas), lambdas, col = 'black', pch = 1, cex = 5)
+points(x, f_hat,  col = '#0000A0', pch = 18,cex = cex )
+legend("topright", 
+       legend = c("Actual", expression(paste(hat(lambda), " = 0.276", e^{-0.038*Volatility}))),
+       col = c("black", "#0000A0"), pch = c(1, 18), cex = 2, pt.cex = 4)
+
+
+0.276 * exp(-0.038*30)
+# Plot of distribution
+x <- seq(-120, 50, length.out = 200)
+cex <- 2
+png("your_plot.png", width = 1618, height = 1000, units = "px", res = 100)
+hist( na.omit( c(sma_tmp[, 401:600])) , breaks = 100, probability = TRUE, col = 'white', border = 'black',  main = "", xlab = "Total PnL [$1000's]", ylab = "Density", ylim = c(0, 0.035))
+points(x,pdf_aldlaplace(x, m = 0, lambda = 0.276 * exp(-0.038*30), kappa = 1.8), pch = 19, col = '#0000A0', cex = cex)
+points(x,pdf_aldlaplace(x, m = mus[3], lambda = lambdas[3], kappa  = kappas[3]), pch = 20, col = '#87F717', cex = cex)
+legend("topleft", 
+       legend = c(expression(paste("Laplace(", m, " = 0, ", lambda, " = 0.0883, ", kappa, " = 1.8)")), 
+                  expression(paste("Laplace(", m, " = 0, ", lambda, " = 0.0748, ", kappa, " = 1.88)"))  ), 
+    pch = c(19, 20), col = c("#0000A0", "#87F717"), cex = cex, text.font = 2)
+
+
+```
+
+
+```{r}
+momentum <- read.csv('btc_new experiment  momentum-spreadsheet.csv', skip = 16)
+momentum <- momentum[, 2:ncol(momentum)] 
+macd <- data.frame(momentum[, seq(3, ncol(momentum), by = 3)]) 
+macd <- sapply(macd, as.numeric) / 1000
+
+
+# MACD
+unique_list <- c()
+for (i in 1:ncol(macd)){
+  unique_list[i] <- length( unique(macd[, i]) )
+}
+
+macd_tmp <- matrix(NA, nrow= max(unique_list), ncol = ncol(macd))
+for (i in 1:ncol(macd)){
+  new_col <-  remove_consecutive_repetitions(macd[, i])
+  macd_tmp[1:length(new_col), i] <- new_col
+}
+
+
+ms <- c()
+lambdas<- c()
+kappas <- c()
+for (i in 0:4){
+  dat <- na.omit( c(macd_tmp[, (1+200*i):(1+200*i + 199)])) 
+  fit <- optim(par = c(1, 1, 1), fn = nll_aldlaplace, data = dat)
+  ms[i+1]<- fit$par[1]
+  lambdas[i+1]<- fit$par[2]
+  kappas[i+1] <- fit$par[3]
+}
+
+# M Plots
+ms<- ms+1
+plot(ms)
+X<-cbind( rep(1, 5), 1:5)
+B_hat<- solve(t(X) %*% X)%*% t(X) %*% log(ms)
+f_hatm<- exp(X %*% B_hat)
+r2_1 <- 1 - sum( (ms - f_hatm)^2) / sum((ms - mean(ms))^2)
+x<- seq(0, 6, length.out = 100)
+X<- cbind(rep(1, 100), x)
+f_hatm <- exp(X %*% B_hat) - 1
+plot(x, f_hatm, col ='blue')
+ms <- ms - 1
+points(ms, pch = '18')
+
+exp(B_hat[1])
+
+cex <- 3
+png("your_plot.png", width = 1618, height = 1000, units = "px", res = 100)
+plot(x, f_hatm,  col = '#0000A0', xlab = "Volatility [$10's]", ylab = 'm', cex.lab = 1.4)
+points(1:length(ms), ms, col = 'black', pch = 1, cex = 10)
+points(x, f_hatm,  col = '#0000A0', pch = 18,cex = cex )
+legend("topleft", 
+       legend = c("Actual", expression(paste(hat(m), " = 0.58", e^{0.0369 * Volatility} - 1))),
+       col = c("black", "#0000A0"), pch = c(1, 18), cex = 2, pt.cex = 4)
+
+
+
+
+# lambda plots
+X<-cbind( rep(1, 5), 1:5)
+B_hat<- solve(t(X) %*% X)%*% t(X) %*% log(lambdas)
+f_hatl<- exp(X %*% B_hat)
+r2_1 <- 1 - sum( (lambdas - f_hatl)^2) / sum((lambdas - mean(lambdas))^2)
+x<- seq(0, 6, length.out = 100)
+X<- cbind(rep(1, 100), x)
+f_hatm <- exp(X %*% B_hat)
+plot(x, f_hatm, col ='blue')
+points(lambdas)
+
+exp(B_hat[1])
+cex <- 3
+png("your_plot.png", width = 1618, height = 1000, units = "px", res = 100)
+plot(x, f_hatm,  col = '#0000A0', xlab = "Volatility [$10's]", ylab = expression(lambda), cex.lab = 1.4)
+points(1:length(lambdas), lambdas, col = 'black', pch = 1, cex = 10)
+points(x, f_hatm,  col = '#0000A0', pch = 18,cex = cex )
+legend("topright", 
+       legend = c("Actual", expression(paste(hat(lambda), " = 0.235", e^{-0.0375* Volatility}))),
+       col = c("black", "#0000A0"), pch = c(1, 18), cex = 2, pt.cex = 4)
+
+# kappa plots
+X<-cbind( rep(1, 5), 1:5)
+B_hat<- solve(t(X) %*% X)%*% t(X) %*% kappas
+f_hatk<- X %*% B_hat
+r2_1 <- 1 - sum( (kappas - f_hatk)^2) / sum((kappas - mean(kappas))^2)
+x<- seq(0, 6, length.out = 100)
+X <- cbind(rep(1, 100), x)
+f_hatk <- X %*% B_hat
+plot(x, f_hatk, col ='blue')
+points(kappas)
+
+cex <- 3
+png("your_plot.png", width = 1618, height = 1000, units = "px", res = 100)
+plot(x, f_hatk,  col = '#0000A0', xlab = "Volatility [$10's]", ylab = expression(kappa), cex.lab = 1.4)
+points(1:length(kappas), kappas, col = 'black', pch = 1, cex = 10)
+points(x, f_hatk,  col = '#0000A0', pch= 18, cex = cex )
+legend("topleft", legend = c("Actual", expression(paste(hat(kappa), " = 1.019 + 0.0045Volatilty"))),
+       col = c("black", "#0000A0"), pch = c(1, 18), cex = 2, pt.cex = 4) 
+
+# Plot of distribution
+volatility <- 50
+x <- seq(-140, 120, length.out = 200)
+m <- 0.58*exp(0.0369 * volatility) - 1
+lambda <- 0.235*exp(-0.0375 * volatility)
+kappa <- 1.019 + 0.0045 *volatility
+cex <- 2
+png("your_plot.png", width = 1618, height = 1000, units = "px", res = 100)
+hist( na.omit( c(macd_tmp[, 801:1000])) , breaks = 100, probability = TRUE, col = 'white', border = 'black',  main = "", xlab = "Total PnL [$1000's]", ylab = "Density",ylim =  c(0, 0.023))
+points(x,pdf_aldlaplace(x, m = m, lambda = lambda, kappa = kappa), pch = 19, col = '#0000A0', cex = cex)
+points(x,pdf_aldlaplace(x, m = ms[volatility/10], lambda = lambdas[volatility/10], kappa  = kappas[volatility/10]), pch = 20, col = '#87F717', cex = cex)
+legend("topleft", 
+       legend = c(expression(paste("Laplace(", m, " = 2.67, ", lambda, " = 0.0360, ", kappa, " = 1.24)")), 
+                  expression(paste("Laplace(", m, " = 3.18, ", lambda, " = 0.0407, ", kappa, " = 1.25)"))  ), 
+    pch = c(19, 20), col = c("#0000A0", "#87F717"), cex = cex, text.font = 2)
+
+
+```
+
+Arbitrage
+```{r}
+library(MASS)
+library(readxl)
+btc <- read.csv("btc_new arbitrage-spreadsheet.csv", skip =19 )
+btc <- sapply(btc, as.numeric) [, 2: ncol(btc)]/1000
+btc <- data.frame(btc[, seq(2, ncol(btc), by = 2)])
+apply(btc, 2, function(x) hist(x, breaks = 200, probability = T))
+
+
+mus <- c()
+bs<- c()
+for (i in 1:ncol(btc)){
+  fit <- optim(par = c(1, 1), fn = nll_laplace, data = btc[, i])
+  mus[i]<- fit$par[1]
+  bs[i]<- fit$par[2]
+}
+
+# Plots of scale parameter
+plot(1:100, bs)
+# Linear
+N <- length(bs)
+X<- cbind( rep(1, N), 1:N)
+B_hat<- solve(t(X) %*% X) %*% t(X) %*% bs
+f_hat <- X%*% B_hat
+points(1:100, f_hat, col ='blue', type = 'l', lwd=3)
+points(1:100, 0.02*1:100, col = 'red', type = 'l', lwd = 3)
+r2_1 <- 1 - sum( (bs - f_hat)^2) / sum((bs - mean(bs))^2)
+r2_2 <- 1 - sum( (bs - 0.02*1:100)^2) / sum((bs - mean(bs))^2)
+
+
+# To use
+png("your_plot.png", width = 1618, height = 1000, units = "px", res = 100)
+lwd <- 3
+plot(1:length(bs), bs, col = 'black', xlab = 'Volatility', ylab = 'Scale Parameter b', type = 'n',cex.lab=1.4)
+points(1:length(bs), f_hat,  col = '#0000A0', type = 'l', lwd =18 )
+points(1:length(bs),0.02*1:100, col = '#B83C08',  type = 'l', lwd =10)  
+points(1:length(bs), bs, col = 'black', pch = 1, cex = 3)
+legend("bottomright", legend = c("Observed", expression(paste(hat(beta), " = [-0.012, 0.0202]'")), expression(paste(hat(beta), " = [0, 0.02]'"))),
+       col = c("black", "#0000A0", "#B83C08"), pch = c(1, 16, 16), cex = 2, pt.cex = 4) 
+
+
+# Plot of distribution
+volatility <- 50
+cex <- 3
+png("your_plot.png", width = 1618, height = 1000, units = "px", res = 100)
+hist(btc[, volatility], breaks = 100, probability = TRUE, col = 'white', border = 'black',  main = "", xlab = "Arbitrage Spread [1000's]", ylab = "Density")
+points(x,laplace_pdf(x, mu = mus[volatility], b = bs[volatility]), pch = 19, col = '#0000A0', cex = cex)
+points(x, laplace_pdf(x, mu = 0, volatility*0.02), pch = 20, col = '#B83C08', cex = cex)
+legend("topright", legend = c(expression(paste("Laplace(", mu, " = 0, ", b, " = 0.909)")), expression(paste("Laplace(", mu, " = 0, ", b, " = 1)"))), 
+       pch = c(19, 20), col = c("#0000A0", "#B83C08"), cex = cex, text.font = 2)
+
+ 
+
+
+```
+
